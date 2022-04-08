@@ -80,9 +80,6 @@ COUNT(*)
 217,062,824
 ;
 
-SELECT * FROM app_risk.app_risk.seller_profit_snapshots WHERE user_token = 'HT8TBW4ZCAP7R';
-SELECT * FROM app_risk.app_risk.seller_profit WHERE user_token = 'HT8TBW4ZCAP7R';
-
 --Sellers with 6 months GPV
 -----------01.Trailing 6 months GPV and Merchant Information--------------------
 CREATE OR REPLACE TABLE app_risk.app_risk.hist_seller_profit_calculation_drv01_loading_2020 AS
