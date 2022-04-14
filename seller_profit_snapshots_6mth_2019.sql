@@ -245,7 +245,7 @@ AND fpt.payment_trx_recognized_date <= latest_trx_date
 JOIN app_risk.app_risk.riskarbiter_scored_event rs ON rs.eventkey = fpt.payment_token
 WHERE fpt.payment_trx_recognized_date >= DATEADD(day, -15, latest_trx_date)
 AND fpt.payment_trx_recognized_date <= latest_trx_date
-AND modelname IN ('ml__default_v2_dumbo_novalue_noinstant_score_all_20190904')
+AND modelname IN ('ml__default_v2_dumbo_novalue_noinstant_score_all_20200904')
 AND fpt.is_gpv = 1
 GROUP BY 1,2
 ;
