@@ -235,7 +235,12 @@ INNER JOIN app_bi.pentagon.fact_payment_transactions AS vf ON payment_trx_recogn
 WHERE payment_trx_recognized_date>=DATEADD(day, -180, ct.cohort_date) AND payment_trx_recognized_date<=ct.cohort_date AND vf.is_gpv = 1
 GROUP BY 1,2
 ;
-CREATE OR REPLACE TABLE app_risk.app_risk.hist_seller_profit_calculation_drv04_pd2_loading_2020 AS
+
+select count(*), count(distinct unit_token,cohort_date)
+from app_risk.app_risk.hist_seller_profit_calculation_drv04_pd1_loading_2020
+;
+
+CREATE OR REPLACE TABLE app_risk.app_risk.hist_seller_profit_calculation_drv04_pd2_loading_2020_tmp AS
 SELECT fpt.unit_token
 ,u.cohort_date
 ,avg(rs.score) AS pd_score
@@ -249,6 +254,21 @@ AND modelname IN ('ml__default_v2_dumbo_novalue_noinstant_score_all_20200904')
 AND fpt.is_gpv = 1
 GROUP BY 1,2
 ;
+
+CREATE OR REPLACE TABLE app_risk.app_risk.hist_seller_profit_calculation_drv04_pd2_loading_2020 AS
+SELECT u.unit_token
+,u.cohort_date
+,ifnull(tmp.pd_score,0) AS pd_score
+FROM app_risk.app_risk.hist_seller_profit_calculation_drv04_pd1_loading_2020 u
+left join app_risk.app_risk.hist_seller_profit_calculation_drv04_pd2_loading_2020_tmp tmp
+on u.unit_token = tmp.unit_token and u.cohort_date = tmp.cohort_date
+;
+
+select count(*), count(distinct unit_token,cohort_date)
+from app_risk.app_risk.hist_seller_profit_calculation_drv04_pd2_loading_2020
+--where pd_score != 0
+;
+
 CREATE OR REPLACE TABLE app_risk.app_risk.hist_seller_profit_calculation_drv04_pd3_gpv_loading_2020 AS
 SELECT
 vf.user_token
@@ -271,28 +291,34 @@ SELECT drv.unit_token
 WHEN gpv.gpv_annualized_estimate < 500000 THEN '02.100K-500K'
 WHEN gpv.gpv_annualized_estimate < 1000000 THEN '03.500K-1MM'
 ELSE '04.1MM+' END AS gpv_band
-,CASE WHEN gpv.gpv_annualized_estimate is null or gpv.gpv_annualized_estimate < 100000 THEN 0.01499172 * drv.pd_score + 0.02299767 * square(drv.pd_score) + 0.00011414723667305354
+,case when drv.pd_score = 0 then 0
+    else (CASE WHEN gpv.gpv_annualized_estimate is null or gpv.gpv_annualized_estimate < 100000 THEN 0.01499172 * drv.pd_score + 0.02299767 * square(drv.pd_score) + 0.00011414723667305354
 WHEN gpv.gpv_annualized_estimate < 500000 THEN 0.05548777 * drv.pd_score + 0.00303788 * square(drv.pd_score) + 0.000474303699369024
-ELSE 0.04734929 * drv.pd_score + 0.19263468 * square(drv.pd_score) + 0.0012467489967264306 END AS probability_default
+ELSE 0.04734929 * drv.pd_score + 0.19263468 * square(drv.pd_score) + 0.0012467489967264306 END) end AS probability_default
 FROM app_risk.app_risk.hist_seller_profit_calculation_drv04_pd2_loading_2020 drv
 INNER JOIN app_risk.app_risk.hist_seller_profit_calculation_drv04_pd3_gpv_loading_2020 gpv ON drv.unit_token = gpv.user_token and drv.cohort_date = gpv.cohort_date
 ;
-SELECT COUNT(*), COUNT(distinct unit_token, cohort_date) FROM app_risk.app_risk.hist_seller_profit_calculation_drv05_pd_loading_2020;
+
+SELECT COUNT(*), COUNT(distinct unit_token, cohort_date) FROM app_risk.app_risk.hist_seller_profit_calculation_drv05_pd_loading_2020
+--where probability_default != 0
+;
+
 -----------06.Pull the LGD--------------------
 CREATE OR REPLACE TABLE app_risk.app_risk.hist_seller_profit_calculation_drv05_lgd_loading_2020 AS
 SELECT fpt.unit_token
 ,u.cohort_date
-,avg(rs.score) AS lgd_loss
+,0 AS lgd_loss
 FROM app_risk.app_risk.hist_seller_profit_calculation_drv04_pd1_loading_2020 u
 JOIN app_bi.pentagon.fact_payment_transactions fpt ON fpt.unit_token = u.unit_token AND fpt.payment_trx_recognized_date >= DATEADD(day, -15, latest_trx_date)
 AND fpt.payment_trx_recognized_date <= latest_trx_date
-JOIN app_risk.app_risk.riskarbiter_scored_event rs ON rs.eventkey = fpt.payment_token
-WHERE fpt.payment_trx_recognized_date >= DATEADD(day, -15, latest_trx_date)
-AND fpt.payment_trx_recognized_date <= latest_trx_date
-AND modelname IN ('ml__credit_risk__LGD_loss_score_all_20210218')
 AND fpt.is_gpv = 1
 GROUP BY 1,2
 ;
+
+SELECT COUNT(*), COUNT(distinct unit_token, cohort_date) FROM app_risk.app_risk.hist_seller_profit_calculation_drv05_lgd_loading_2020
+--where probability_default != 0
+;
+
 ----------07.merge revenue and lgd loss----------------
 CREATE OR REPLACE TABLE app_risk.app_risk.hist_seller_profit_calculation_drv06_loading_2020 AS
 SELECT
@@ -358,8 +384,8 @@ LEFT OUTER JOIN app_risk.app_risk.hist_seller_profit_calculation_drv05_lgd_loadi
 LEFT OUTER JOIN app_risk.app_risk.hist_seller_profit_calculation_drv04_pd3_gpv_loading_2020 gpv ON r.user_token = gpv.user_token and r.cohort_date = gpv.cohort_date
 ;
 
-CREATE TABLE IF NOT EXISTS app_risk.app_risk.seller_profit_snapshots_2020 lIKE app_risk.app_risk.hist_seller_profit_calculation_drv06_loading_2020;
-ALTER TABLE app_risk.app_risk.seller_profit_snapshots_2020 SWAP WITH app_risk.app_risk.hist_seller_profit_calculation_drv06_loading_2020;
+CREATE TABLE IF NOT EXISTS app_risk.app_risk.seller_profit_snapshots_6mth_2020 lIKE app_risk.app_risk.hist_seller_profit_calculation_drv06_loading_2020;
+ALTER TABLE app_risk.app_risk.seller_profit_snapshots_6mth_2020 SWAP WITH app_risk.app_risk.hist_seller_profit_calculation_drv06_loading_2020;
 
 DROP TABLE IF EXISTS app_risk.app_risk.hist_seller_profit_calculation_drv01_loading_2020 CASCADE;
 DROP TABLE IF EXISTS app_risk.app_risk.hist_seller_profit_calculation_drv02_loading_2020 CASCADE;
@@ -372,8 +398,20 @@ DROP TABLE IF EXISTS app_risk.app_risk.hist_seller_profit_calculation_drv05_pd_l
 DROP TABLE IF EXISTS app_risk.app_risk.hist_seller_profit_calculation_drv05_lgd_loading_2020 CASCADE;
 DROP TABLE IF EXISTS app_risk.app_risk.hist_seller_profit_calculation_drv06_loading_2020 CASCADE;
 
-CREATE TABLE app_risk.app_risk.seller_profit_snapshots_6mth as
-select * from app_risk.app_risk.seller_profit_snapshots
-union
-select * from app_risk.app_risk.seller_profit_snapshots_2020
+select count(*), count(distinct user_token, cohort_date)
+from app_risk.app_risk.seller_profit_snapshots_6mth_2020
+limit 5
 ;
+
+create or replace table app_risk.app_risk.seller_profit_snapshots_2019_2020 as
+select *
+from app_risk.app_risk.seller_profit_snapshots_6mth_2019
+union all
+select *
+from app_risk.app_risk.seller_profit_snapshots_6mth_2020
+;
+
+select count(*), count(distinct user_token, cohort_date)
+from app_risk.app_risk.seller_profit_snapshots_2019_2020
+;
+
